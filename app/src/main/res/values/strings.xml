@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">秒级收件箱</string>
+    <string name="tile_label">记灵感</string>
+    <string name="dialog_title">捕捉灵感</string>
+</resources>

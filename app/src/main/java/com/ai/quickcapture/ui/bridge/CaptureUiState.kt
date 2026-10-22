@@ -1,0 +1,10 @@
+package com.ai.quickcapture.ui.bridge
+
+data class CaptureUiState @JvmOverloads constructor(
+    val inputText: String = "",
+    val isRecording: Boolean = false,
+    val isSaving: Boolean = false,
+    val targetFileName: String = "Inbox.md",
+    val statusMessage: String? = null,
+    val isSuccess: Boolean = false
+)
