@@ -1,7 +1,7 @@
 # 秒级收件箱 (QuickInbox)
 
 <p align="center">
-  <img src="app/src/main/res/drawable/ic_tile_inbox.xml" width="96" height="96" alt="QuickInbox Logo" />
+  <img src="docs/images/logo.svg" width="96" height="96" alt="QuickInbox Logo" />
 </p>
 
 <p align="center">
