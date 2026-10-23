@@ -1,6 +1,9 @@
 package com.ai.quickcapture.activity;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -40,6 +43,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
     private CaptureUiState currentUiState;
     private String voiceBaseText = "";
+    private String lastDismissedClipboardText = null;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final ActivityResultLauncher<Intent> systemSpeechLauncher =
@@ -78,7 +82,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 settingsManager.getTargetFileName(),
                 null,
                 false,
-                voiceAvailable
+                voiceAvailable,
+                null
         );
 
         composeView = new ComposeView(this);
@@ -98,7 +103,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                                 currentUiState.getTargetFileName(),
                                 null,
                                 false,
-                                supported
+                                supported,
+                                currentUiState.getClipboardText()
                         );
                         renderUi();
                     }
@@ -108,9 +114,48 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            checkClipboard();
+        }
+    }
+
+    private void checkClipboard() {
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && cm.hasPrimaryClip()) {
+                ClipData clipData = cm.getPrimaryClip();
+                if (clipData != null && clipData.getItemCount() > 0) {
+                    CharSequence text = clipData.getItemAt(0).getText();
+                    if (text != null) {
+                        String clipText = text.toString().trim();
+                        if (!clipText.isEmpty()
+                                && !clipText.equals(currentUiState.getInputText().trim())
+                                && !clipText.equals(lastDismissedClipboardText)) {
+                            currentUiState = new CaptureUiState(
+                                    currentUiState.getInputText(),
+                                    currentUiState.isRecording(),
+                                    currentUiState.isSaving(),
+                                    currentUiState.getTargetFileName(),
+                                    currentUiState.getStatusMessage(),
+                                    currentUiState.isSuccess(),
+                                    currentUiState.isVoiceAvailable(),
+                                    clipText
+                            );
+                            renderUi();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        lastDismissedClipboardText = null;
         String sharedText = extractInitialText(intent);
         if (!sharedText.isEmpty()) {
             currentUiState = new CaptureUiState(
@@ -120,7 +165,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     currentUiState.getTargetFileName(),
                     null,
                     false,
-                    currentUiState.isVoiceAvailable()
+                    currentUiState.isVoiceAvailable(),
+                    null
             );
             renderUi();
         }
@@ -141,6 +187,10 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
     @Override
     public void onTextChange(@NonNull String newText) {
+        String clip = currentUiState.getClipboardText();
+        if (clip != null && newText.trim().equals(clip.trim())) {
+            clip = null;
+        }
         currentUiState = new CaptureUiState(
                 newText,
                 currentUiState.isRecording(),
@@ -148,7 +198,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 currentUiState.getTargetFileName(),
                 null,
                 false,
-                currentUiState.isVoiceAvailable()
+                currentUiState.isVoiceAvailable(),
+                clip
         );
         renderUi();
     }
@@ -170,7 +221,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 currentUiState.getTargetFileName(),
                 "正在写入文件...",
                 false,
-                currentUiState.isVoiceAvailable()
+                currentUiState.isVoiceAvailable(),
+                null
         );
         renderUi();
 
@@ -185,7 +237,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.getTargetFileName(),
                             "已成功存入 " + savedLocation,
                             true,
-                            currentUiState.isVoiceAvailable()
+                            currentUiState.isVoiceAvailable(),
+                            null
                     );
                     renderUi();
 
@@ -208,12 +261,98 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.getTargetFileName(),
                             "保存失败: " + errorMessage,
                             false,
-                            currentUiState.isVoiceAvailable()
+                            currentUiState.isVoiceAvailable(),
+                            null
                     );
                     renderUi();
                 });
             }
         });
+    }
+
+    @Override
+    public void onPasteClipboard(@NonNull String text) {
+        lastDismissedClipboardText = text;
+        String current = currentUiState.getInputText().trim();
+        String combined = current.isEmpty() ? text : current + "\n" + text;
+        currentUiState = new CaptureUiState(
+                combined,
+                currentUiState.isRecording(),
+                currentUiState.isSaving(),
+                currentUiState.getTargetFileName(),
+                null,
+                false,
+                currentUiState.isVoiceAvailable(),
+                null
+        );
+        renderUi();
+    }
+
+    @Override
+    public void onDismissClipboard() {
+        lastDismissedClipboardText = currentUiState.getClipboardText();
+        currentUiState = new CaptureUiState(
+                currentUiState.getInputText(),
+                currentUiState.isRecording(),
+                currentUiState.isSaving(),
+                currentUiState.getTargetFileName(),
+                currentUiState.getStatusMessage(),
+                currentUiState.isSuccess(),
+                currentUiState.isVoiceAvailable(),
+                null
+        );
+        renderUi();
+    }
+
+    @Override
+    public void onToggleTodoPrefix() {
+        String current = currentUiState.getInputText();
+        String updated;
+        if (current.startsWith("- [ ] ")) {
+            updated = current.substring(6);
+        } else if (current.startsWith("- [x] ") || current.startsWith("- [X] ")) {
+            updated = current.substring(6);
+        } else if (current.startsWith("- ")) {
+            updated = "- [ ] " + current.substring(2);
+        } else {
+            updated = "- [ ] " + current;
+        }
+        currentUiState = new CaptureUiState(
+                updated,
+                currentUiState.isRecording(),
+                currentUiState.isSaving(),
+                currentUiState.getTargetFileName(),
+                null,
+                false,
+                currentUiState.isVoiceAvailable(),
+                currentUiState.getClipboardText()
+        );
+        renderUi();
+    }
+
+    @Override
+    public void onAppendTag(@NonNull String tag) {
+        String current = currentUiState.getInputText().trim();
+        String tagStr = "#" + tag;
+        String updated;
+        if (current.isEmpty()) {
+            updated = tagStr + " ";
+        } else if (current.contains(tagStr)) {
+            updated = current.replace(tagStr, "").replaceAll(" +", " ").trim();
+        } else {
+            updated = current + " " + tagStr + " ";
+        }
+        currentUiState = new CaptureUiState(
+                updated,
+                currentUiState.isRecording(),
+                currentUiState.isSaving(),
+                currentUiState.getTargetFileName(),
+                null,
+                false,
+                currentUiState.isVoiceAvailable(),
+                currentUiState.getClipboardText()
+        );
+        renderUi();
     }
 
     @Override
@@ -231,7 +370,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     currentUiState.getTargetFileName(),
                     null,
                     false,
-                    currentUiState.isVoiceAvailable()
+                    currentUiState.isVoiceAvailable(),
+                    currentUiState.getClipboardText()
             );
             renderUi();
             return;
@@ -266,7 +406,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.getTargetFileName(),
                             listening ? "正在聆听语音输入..." : null,
                             false,
-                            currentUiState.isVoiceAvailable()
+                            currentUiState.isVoiceAvailable(),
+                            currentUiState.getClipboardText()
                     );
                     renderUi();
                 });
@@ -283,7 +424,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.getTargetFileName(),
                             "正在识别...",
                             false,
-                            currentUiState.isVoiceAvailable()
+                            currentUiState.isVoiceAvailable(),
+                            currentUiState.getClipboardText()
                     );
                     renderUi();
                 });
@@ -308,7 +450,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                                 currentUiState.getTargetFileName(),
                                 errorMessage,
                                 false,
-                                currentUiState.isVoiceAvailable()
+                                currentUiState.isVoiceAvailable(),
+                                currentUiState.getClipboardText()
                         );
                         renderUi();
                     }
@@ -326,7 +469,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.getTargetFileName(),
                             "已自动隐藏录音按钮，可直接使用输入法语音",
                             false,
-                            false
+                            false,
+                            currentUiState.getClipboardText()
                     );
                     renderUi();
                 });
@@ -355,7 +499,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                         currentUiState.getTargetFileName(),
                         "唤起语音失败: " + e.getMessage(),
                         false,
-                        currentUiState.isVoiceAvailable()
+                        currentUiState.isVoiceAvailable(),
+                        currentUiState.getClipboardText()
                 );
                 renderUi();
             });
@@ -375,7 +520,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                         currentUiState.getTargetFileName(),
                         "正在自动存入文件...",
                         true,
-                        currentUiState.isVoiceAvailable()
+                        currentUiState.isVoiceAvailable(),
+                        null
                 );
                 renderUi();
                 saveNoteText(combined);
@@ -387,7 +533,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                         currentUiState.getTargetFileName(),
                         "识别完成，点击「存入」即可写入文件",
                         true,
-                        currentUiState.isVoiceAvailable()
+                        currentUiState.isVoiceAvailable(),
+                        null
                 );
                 renderUi();
             }
@@ -403,7 +550,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     currentUiState.getTargetFileName(),
                     message,
                     isSuccess,
-                    currentUiState.isVoiceAvailable()
+                    currentUiState.isVoiceAvailable(),
+                    currentUiState.getClipboardText()
             );
             renderUi();
         });

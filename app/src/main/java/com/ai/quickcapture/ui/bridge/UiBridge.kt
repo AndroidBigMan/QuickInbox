@@ -16,6 +16,10 @@ object UiBridge {
         fun onSubmit()
         fun onVoiceToggle()
         fun onDismiss()
+        fun onPasteClipboard(text: String)
+        fun onDismissClipboard()
+        fun onToggleTodoPrefix()
+        fun onAppendTag(tag: String)
     }
 
     /**
@@ -48,7 +52,11 @@ object UiBridge {
                         onTextChange = { listener.onTextChange(it) },
                         onSubmit = { listener.onSubmit() },
                         onVoiceToggle = { listener.onVoiceToggle() },
-                        onDismiss = { listener.onDismiss() }
+                        onDismiss = { listener.onDismiss() },
+                        onPasteClipboard = { listener.onPasteClipboard(it) },
+                        onDismissClipboard = { listener.onDismissClipboard() },
+                        onToggleTodoPrefix = { listener.onToggleTodoPrefix() },
+                        onAppendTag = { listener.onAppendTag(it) }
                     )
                 }
             }

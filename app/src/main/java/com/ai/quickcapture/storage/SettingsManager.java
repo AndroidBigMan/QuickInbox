@@ -56,13 +56,46 @@ public class SettingsManager {
     }
 
     @NonNull
-    public String getTargetFileName() {
+    public String getRawTargetFileName() {
         String name = prefs.getString(KEY_TARGET_FILE_NAME, DEFAULT_FILE_NAME);
         if (name == null || name.trim().isEmpty()) {
             return DEFAULT_FILE_NAME;
         }
         name = name.trim();
         return name.endsWith(".md") ? name : name + ".md";
+    }
+
+    @NonNull
+    public String getTargetFileName() {
+        return resolveFileName(getRawTargetFileName());
+    }
+
+    @NonNull
+    public static String resolveFileName(@NonNull String rawPattern) {
+        java.util.Date now = new java.util.Date();
+        String year = new java.text.SimpleDateFormat("yyyy", java.util.Locale.getDefault()).format(now);
+        String month = new java.text.SimpleDateFormat("MM", java.util.Locale.getDefault()).format(now);
+        String day = new java.text.SimpleDateFormat("dd", java.util.Locale.getDefault()).format(now);
+
+        String resolved = rawPattern
+                .replace("%YYYY%", year)
+                .replace("%Y%", year)
+                .replace("%MM%", month)
+                .replace("%M%", month)
+                .replace("%DD%", day)
+                .replace("%D%", day)
+                .replace("{{date}}", year + "-" + month + "-" + day)
+                .replace("{YYYY}", year)
+                .replace("{MM}", month)
+                .replace("{DD}", day)
+                .replace("%YYYY", year)
+                .replace("%MM", month)
+                .replace("%DD", day);
+
+        if (!resolved.endsWith(".md")) {
+            resolved += ".md";
+        }
+        return resolved;
     }
 
     public void setTargetFileName(@NonNull String fileName) {

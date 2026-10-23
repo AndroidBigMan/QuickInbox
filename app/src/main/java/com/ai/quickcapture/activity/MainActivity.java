@@ -75,7 +75,7 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
         UiBridge.bindMainSettings(
                 composeView,
                 vaultPathDisplay,
-                settingsManager.getTargetFileName(),
+                settingsManager.getRawTargetFileName(),
                 settingsManager.getTemplate(),
                 settingsManager.isAutoSaveVoice(),
                 settingsManager.isVoiceAvailable(),

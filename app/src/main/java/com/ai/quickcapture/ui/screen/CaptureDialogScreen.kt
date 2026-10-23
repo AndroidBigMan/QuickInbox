@@ -2,12 +2,16 @@ package com.ai.quickcapture.ui.screen
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +25,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -52,6 +57,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ai.quickcapture.R
@@ -64,7 +70,11 @@ fun CaptureDialogScreen(
     onTextChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onVoiceToggle: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPasteClipboard: (String) -> Unit,
+    onDismissClipboard: () -> Unit,
+    onToggleTodoPrefix: () -> Unit,
+    onAppendTag: (String) -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
     val haptic = LocalHapticFeedback.current
@@ -131,7 +141,7 @@ fun CaptureDialogScreen(
                         )
                     }
 
-                    // Target File Tag
+                    // Target File Tag (shows resolved file name e.g. 2026-10-23.md)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
@@ -145,7 +155,69 @@ fun CaptureDialogScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Feature 2: Clipboard Peek & Fill Pill
+                AnimatedVisibility(
+                    visible = !uiState.clipboardText.isNullOrBlank(),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    uiState.clipboardText?.let { clipText ->
+                        val previewSnippet = remember(clipText) {
+                            val clean = clipText.trim().replace("\n", " ")
+                            if (clean.length > 20) clean.take(20) + "..." else clean
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onPasteClipboard(clipText)
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "📋 粘贴: \"$previewSnippet\"",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                IconButton(
+                                    onClick = onDismissClipboard,
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "忽略剪贴板",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Input Field
                 OutlinedTextField(
@@ -182,6 +254,74 @@ fun CaptureDialogScreen(
                         onSubmit()
                     })
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 3: Quick Prefixes & Tag Pills
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isTodoActive = uiState.inputText.startsWith("- [ ] ")
+                    // Todo Prefix Chip
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onToggleTodoPrefix()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isTodoActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = if (isTodoActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Text(
+                            text = if (isTodoActive) "✓ 已设待办" else "☑ 待办",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (isTodoActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    TagChip(
+                        label = "💡 灵感",
+                        isActive = uiState.inputText.contains("#idea"),
+                        onAppend = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onAppendTag("idea")
+                        }
+                    )
+
+                    TagChip(
+                        label = "📌 任务",
+                        isActive = uiState.inputText.contains("#todo"),
+                        onAppend = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onAppendTag("todo")
+                        }
+                    )
+
+                    TagChip(
+                        label = "⭐ 重点",
+                        isActive = uiState.inputText.contains("#star"),
+                        onAppend = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onAppendTag("star")
+                        }
+                    )
+
+                    TagChip(
+                        label = "📖 随笔",
+                        isActive = uiState.inputText.contains("#note"),
+                        onAppend = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onAppendTag("note")
+                        }
+                    )
+                }
 
                 // Feedback / Error bar
                 AnimatedVisibility(
@@ -316,5 +456,28 @@ fun CaptureDialogScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TagChip(
+    label: String,
+    isActive: Boolean = false,
+    onAppend: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onAppend),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal),
+            color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+        )
     }
 }

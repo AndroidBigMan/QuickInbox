@@ -1,6 +1,8 @@
 package com.ai.quickcapture.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -163,6 +166,43 @@ fun MainSettingsScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
 
+                    // Live file preview & helper chips
+                    val resolvedPreview = remember(editFileName) {
+                        com.ai.quickcapture.storage.SettingsManager.resolveFileName(editFileName.ifBlank { "Inbox.md" })
+                    }
+                    Text(
+                        text = "💡 今日文件名预览: $resolvedPreview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PresetChip("Inbox.md") {
+                            editFileName = "Inbox.md"
+                            onSaveSettings("Inbox.md", editTemplate, editAutoSaveVoice)
+                        }
+                        PresetChip("%YYYY%-%MM%-%DD%.md") {
+                            editFileName = "%YYYY%-%MM%-%DD%.md"
+                            onSaveSettings("%YYYY%-%MM%-%DD%.md", editTemplate, editAutoSaveVoice)
+                        }
+                        PresetChip("Daily/%YYYY%-%MM%-%DD%.md") {
+                            editFileName = "Daily/%YYYY%-%MM%-%DD%.md"
+                            onSaveSettings("Daily/%YYYY%-%MM%-%DD%.md", editTemplate, editAutoSaveVoice)
+                        }
+                        PresetChip("{{date}}.md") {
+                            editFileName = "{{date}}.md"
+                            onSaveSettings("{{date}}.md", editTemplate, editAutoSaveVoice)
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
@@ -283,7 +323,10 @@ fun MainSettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = onTestAppend,
+                            onClick = {
+                                onSaveSettings(editFileName, editTemplate, editAutoSaveVoice)
+                                onTestAppend()
+                            },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -323,5 +366,26 @@ fun MainSettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+private fun PresetChip(
+    label: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }

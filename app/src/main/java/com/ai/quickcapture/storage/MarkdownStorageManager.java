@@ -2,13 +2,18 @@ package com.ai.quickcapture.storage;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
 import android.database.Cursor;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.util.Log;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -56,62 +61,45 @@ public class MarkdownStorageManager {
                     line = "- **" + timestamp + "** " + content.trim();
                 }
 
-                String formattedEntry = "\n" + line;
-                byte[] data = formattedEntry.getBytes(StandardCharsets.UTF_8);
-
                 Uri vaultUri = settingsManager.getVaultTreeUri();
                 String targetFileName = settingsManager.getTargetFileName();
                 String savedTargetDescription;
 
                 if (vaultUri != null) {
                     ContentResolver resolver = appContext.getContentResolver();
-                    String treeDocId = DocumentsContract.getTreeDocumentId(vaultUri);
-                    Uri parentDocUri = DocumentsContract.buildDocumentUriUsingTree(vaultUri, treeDocId);
-                    Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(vaultUri, treeDocId);
+                    Uri targetFileUri = findOrCreateFileInVault(resolver, vaultUri, targetFileName);
 
-                    Uri targetFileUri = null;
-                    try (Cursor cursor = resolver.query(
-                            childrenUri,
-                            new String[]{
-                                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                                    DocumentsContract.Document.COLUMN_DISPLAY_NAME
-                            },
-                            null,
-                            null,
-                            null
-                    )) {
-                        if (cursor != null) {
-                            while (cursor.moveToNext()) {
-                                String name = cursor.getString(1);
-                                if (targetFileName.equalsIgnoreCase(name)) {
-                                    String docId = cursor.getString(0);
-                                    targetFileUri = DocumentsContract.buildDocumentUriUsingTree(vaultUri, docId);
-                                    break;
-                                }
+                    if (targetFileUri == null) {
+                        throw new IllegalStateException("无法在所选目录中创建目标文件: " + targetFileName);
+                    }
+
+                    boolean isNewOrEmpty = true;
+                    try (Cursor cursor = resolver.query(targetFileUri, new String[]{DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                        if (cursor != null && cursor.moveToFirst()) {
+                            long size = cursor.getLong(0);
+                            if (size > 0) {
+                                isNewOrEmpty = false;
                             }
                         }
-                    }
+                    } catch (Exception ignored) {}
 
-                    if (targetFileUri == null) {
-                        targetFileUri = DocumentsContract.createDocument(
-                                resolver,
-                                parentDocUri,
-                                "text/markdown",
-                                targetFileName
-                        );
-                    }
+                    String formattedEntry = isNewOrEmpty ? (line + "\n") : ("\n" + line);
+                    byte[] data = formattedEntry.getBytes(StandardCharsets.UTF_8);
 
-                    if (targetFileUri == null) {
-                        throw new IllegalStateException("无法在所选目录中创建目标文件");
-                    }
-
-                    try (OutputStream os = resolver.openOutputStream(targetFileUri, "wa")) {
-                        if (os == null) {
-                            throw new IllegalStateException("无法打开输出流");
+                    try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(targetFileUri, "wa")) {
+                        if (pfd == null) {
+                            throw new IllegalStateException("无法打开文件输出通道: " + targetFileName);
                         }
-                        os.write(data);
-                        os.flush();
+                        try (FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor())) {
+                            fos.write(data);
+                            fos.flush();
+                            try {
+                                pfd.getFileDescriptor().sync();
+                            } catch (Exception ignored) {}
+                        }
                     }
+
+                    notifyMediaScanner(vaultUri, targetFileName);
                     savedTargetDescription = targetFileName + " (Obsidian 库)";
                 } else {
                     File baseDir = appContext.getExternalFilesDir("Notes");
@@ -123,10 +111,27 @@ public class MarkdownStorageManager {
                     }
 
                     File localFile = new File(baseDir, targetFileName);
-                    try (FileOutputStream fos = new FileOutputStream(localFile, true)) {
-                        fos.write(data);
-                        fos.flush();
+                    if (localFile.getParentFile() != null && !localFile.getParentFile().exists()) {
+                        localFile.getParentFile().mkdirs();
                     }
+
+                    boolean localEmpty = !localFile.exists() || localFile.length() == 0;
+                    String localFormattedEntry = localEmpty ? (line + "\n") : ("\n" + line);
+                    byte[] localData = localFormattedEntry.getBytes(StandardCharsets.UTF_8);
+
+                    try (FileOutputStream fos = new FileOutputStream(localFile, true)) {
+                        fos.write(localData);
+                        fos.flush();
+                        try {
+                            fos.getFD().sync();
+                        } catch (Exception ignored) {}
+                    }
+
+                    try {
+                        MediaScannerConnection.scanFile(appContext, new String[]{localFile.getAbsolutePath()}, new String[]{"text/markdown"}, null);
+                        appContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(localFile)));
+                    } catch (Exception ignored) {}
+
                     savedTargetDescription = targetFileName + " (本地内置)";
                 }
 
@@ -137,6 +142,102 @@ public class MarkdownStorageManager {
                 mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "保存失败"));
             }
         });
+    }
+
+    @Nullable
+    private Uri findOrCreateFileInVault(@NonNull ContentResolver resolver, @NonNull Uri vaultUri, @NonNull String targetPath) throws Exception {
+        String treeDocId = DocumentsContract.getTreeDocumentId(vaultUri);
+        Uri currentParentUri = DocumentsContract.buildDocumentUriUsingTree(vaultUri, treeDocId);
+        String currentParentDocId = treeDocId;
+
+        String normalizedPath = targetPath.replace('\\', '/').trim();
+        while (normalizedPath.startsWith("/")) {
+            normalizedPath = normalizedPath.substring(1);
+        }
+        String[] parts = normalizedPath.split("/");
+
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i].trim();
+            if (part.isEmpty()) continue;
+            boolean isLastPart = (i == parts.length - 1);
+
+            Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(vaultUri, currentParentDocId);
+            Uri foundUri = null;
+            String foundDocId = null;
+
+            try (Cursor cursor = resolver.query(
+                    childrenUri,
+                    new String[]{
+                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                    },
+                    null,
+                    null,
+                    null
+            )) {
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        String name = cursor.getString(1);
+                        if (part.equalsIgnoreCase(name)) {
+                            foundDocId = cursor.getString(0);
+                            foundUri = DocumentsContract.buildDocumentUriUsingTree(vaultUri, foundDocId);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (foundUri != null) {
+                if (isLastPart) {
+                    return foundUri;
+                } else {
+                    currentParentUri = foundUri;
+                    currentParentDocId = foundDocId;
+                }
+            } else {
+                if (isLastPart) {
+                    return DocumentsContract.createDocument(
+                            resolver,
+                            currentParentUri,
+                            "text/markdown",
+                            part
+                    );
+                } else {
+                    Uri newDirUri = DocumentsContract.createDocument(
+                            resolver,
+                            currentParentUri,
+                            DocumentsContract.Document.MIME_TYPE_DIR,
+                            part
+                    );
+                    if (newDirUri == null) {
+                        throw new IllegalStateException("无法创建目录: " + part);
+                    }
+                    currentParentUri = newDirUri;
+                    currentParentDocId = DocumentsContract.getDocumentId(newDirUri);
+                }
+            }
+        }
+        return null;
+    }
+
+    private void notifyMediaScanner(@NonNull Uri vaultUri, @NonNull String targetFileName) {
+        try {
+            String treeDocId = DocumentsContract.getTreeDocumentId(vaultUri);
+            if (treeDocId != null && treeDocId.startsWith("primary:")) {
+                String subPath = treeDocId.substring("primary:".length());
+                File baseDir = new File(Environment.getExternalStorageDirectory(), subPath);
+                File file = new File(baseDir, targetFileName);
+                if (file.exists()) {
+                    MediaScannerConnection.scanFile(
+                            appContext,
+                            new String[]{file.getAbsolutePath()},
+                            new String[]{"text/markdown"},
+                            null
+                    );
+                    appContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     public void release() {
