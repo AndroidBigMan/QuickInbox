@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ai.quickcapture.R
 
 @Composable
@@ -46,14 +49,18 @@ fun MainSettingsScreen(
     vaultPath: String?,
     fileName: String,
     template: String,
+    autoSaveVoice: Boolean,
+    isVoiceAvailable: Boolean,
     lastTestResult: String?,
     onPickFolder: () -> Unit,
-    onSaveSettings: (String, String) -> Unit,
+    onSaveSettings: (String, String, Boolean) -> Unit,
     onTestAppend: () -> Unit,
-    onAddTilePrompt: () -> Unit
+    onAddTilePrompt: () -> Unit,
+    onRecheckVoiceSupport: () -> Unit
 ) {
     var editFileName by remember(fileName) { mutableStateOf(fileName) }
     var editTemplate by remember(template) { mutableStateOf(template) }
+    var editAutoSaveVoice by remember(autoSaveVoice) { mutableStateOf(autoSaveVoice) }
 
     Scaffold { innerPadding ->
         Column(
@@ -133,7 +140,7 @@ fun MainSettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Card 2: Note Configuration
+            // Card 2: Note Configuration & Voice Behavior
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -141,7 +148,7 @@ fun MainSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "2. 追加规则与模板",
+                        text = "2. 追加规则与语音设置",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -167,15 +174,83 @@ fun MainSettingsScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // System Voice Support Banner
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isVoiceAvailable) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (isVoiceAvailable) "🎙️ 系统语音: 已就绪" else "🎙️ 系统语音: 缺少离线中文包",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                OutlinedButton(
+                                    onClick = onRecheckVoiceSupport,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("重新检测", fontSize = 12.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (isVoiceAvailable)
+                                    "系统语音支持正常，悬浮速记窗将显示独立录音按钮。"
+                                else
+                                    "检测到系统缺少中文离线语音包（如 Google SODA 仅预装英文），悬浮速记窗已自动隐藏录音按钮，建议直接在键盘上点击麦克风说话输入。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    // Voice Auto Save Switch (Only relevant if voice input is available)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "语音完成自动存入文件",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = if (isVoiceAvailable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            )
+                            Text(
+                                text = "开启后点击麦克风说完话，自动追加写入 Markdown 并关闭；关闭后只回显文字供确认",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isVoiceAvailable) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                        Switch(
+                            checked = editAutoSaveVoice,
+                            enabled = isVoiceAvailable,
+                            onCheckedChange = { editAutoSaveVoice = it }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     Button(
-                        onClick = { onSaveSettings(editFileName, editTemplate) },
+                        onClick = { onSaveSettings(editFileName, editTemplate, editAutoSaveVoice) },
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("保存模板配置")
+                        Text("保存配置")
                     }
                 }
             }

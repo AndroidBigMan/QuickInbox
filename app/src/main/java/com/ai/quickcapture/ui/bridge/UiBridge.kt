@@ -23,9 +23,10 @@ object UiBridge {
      */
     interface MainActionListener {
         fun onPickFolder()
-        fun onSaveSettings(fileName: String, template: String)
+        fun onSaveSettings(fileName: String, template: String, autoSaveVoice: Boolean)
         fun onTestAppend()
         fun onAddTilePrompt()
+        fun onRecheckVoiceSupport()
     }
 
     @JvmStatic
@@ -60,6 +61,8 @@ object UiBridge {
         vaultPath: String?,
         fileName: String,
         template: String,
+        autoSaveVoice: Boolean,
+        isVoiceAvailable: Boolean,
         lastTestResult: String?,
         listener: MainActionListener
     ) {
@@ -73,11 +76,14 @@ object UiBridge {
                         vaultPath = vaultPath,
                         fileName = fileName,
                         template = template,
+                        autoSaveVoice = autoSaveVoice,
+                        isVoiceAvailable = isVoiceAvailable,
                         lastTestResult = lastTestResult,
                         onPickFolder = { listener.onPickFolder() },
-                        onSaveSettings = { fName, tpl -> listener.onSaveSettings(fName, tpl) },
+                        onSaveSettings = { fName, tpl, autoSave -> listener.onSaveSettings(fName, tpl, autoSave) },
                         onTestAppend = { listener.onTestAppend() },
-                        onAddTilePrompt = { listener.onAddTilePrompt() }
+                        onAddTilePrompt = { listener.onAddTilePrompt() },
+                        onRecheckVoiceSupport = { listener.onRecheckVoiceSupport() }
                     )
                 }
             }

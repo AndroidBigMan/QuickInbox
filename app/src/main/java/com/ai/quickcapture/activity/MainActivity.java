@@ -18,12 +18,14 @@ import com.ai.quickcapture.service.QuickCaptureTileService;
 import com.ai.quickcapture.storage.MarkdownStorageManager;
 import com.ai.quickcapture.storage.SettingsManager;
 import com.ai.quickcapture.ui.bridge.UiBridge;
+import com.ai.quickcapture.voice.SpeechVoiceManager;
 
 public class MainActivity extends ComponentActivity implements UiBridge.MainActionListener {
 
     private ComposeView composeView;
     private SettingsManager settingsManager;
     private MarkdownStorageManager storageManager;
+    private SpeechVoiceManager speechManager;
 
     private String lastTestResult = null;
 
@@ -51,11 +53,19 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
 
         settingsManager = SettingsManager.getInstance(this);
         storageManager = new MarkdownStorageManager(this);
+        speechManager = new SpeechVoiceManager(this);
 
         composeView = new ComposeView(this);
         setContentView(composeView);
 
         renderUi();
+
+        // 首次打开若状态未确定，自动触发一次静默检测
+        if (settingsManager.getVoiceSupportStatus() == SettingsManager.VOICE_STATUS_UNKNOWN) {
+            speechManager.checkChineseSupportAsync((supported, reason) -> {
+                runOnUiThread(this::renderUi);
+            });
+        }
     }
 
     private void renderUi() {
@@ -67,6 +77,8 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
                 vaultPathDisplay,
                 settingsManager.getTargetFileName(),
                 settingsManager.getTemplate(),
+                settingsManager.isAutoSaveVoice(),
+                settingsManager.isVoiceAvailable(),
                 lastTestResult,
                 this
         );
@@ -82,15 +94,17 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
     }
 
     @Override
-    public void onSaveSettings(@NonNull String fileName, @NonNull String template) {
+    public void onSaveSettings(@NonNull String fileName, @NonNull String template, boolean autoSaveVoice) {
         if (!fileName.trim().isEmpty()) {
             settingsManager.setTargetFileName(fileName.trim());
         }
         if (!template.trim().isEmpty()) {
             settingsManager.setTemplate(template.trim());
         }
+        settingsManager.setAutoSaveVoice(autoSaveVoice);
+
         Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
-        lastTestResult = "✅ 目标文件: " + settingsManager.getTargetFileName() + "，模板规则已更新";
+        lastTestResult = "✅ 配置已更新（目标: " + settingsManager.getTargetFileName() + "，语音直存: " + (autoSaveVoice ? "开启" : "关闭") + "）";
         renderUi();
     }
 
@@ -143,8 +157,25 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
     }
 
     @Override
+    public void onRecheckVoiceSupport() {
+        lastTestResult = "正在重新探测系统底层离线语音包与服务...";
+        renderUi();
+
+        settingsManager.resetVoiceSupportStatus();
+        speechManager.checkChineseSupportAsync((supported, reason) -> {
+            runOnUiThread(() -> {
+                lastTestResult = (supported ? "✅ " : "⚠️ ") + "语音支持检测: " + reason;
+                renderUi();
+            });
+        });
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (speechManager != null) {
+            speechManager.release();
+        }
         if (storageManager != null) {
             storageManager.release();
         }

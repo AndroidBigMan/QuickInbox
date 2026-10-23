@@ -6,5 +6,6 @@ data class CaptureUiState @JvmOverloads constructor(
     val isSaving: Boolean = false,
     val targetFileName: String = "Inbox.md",
     val statusMessage: String? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    val isVoiceAvailable: Boolean = false
 )

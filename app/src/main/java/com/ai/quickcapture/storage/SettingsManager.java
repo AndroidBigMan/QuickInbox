@@ -12,6 +12,7 @@ public class SettingsManager {
     private static final String KEY_TARGET_FILE_NAME = "target_file_name";
     private static final String KEY_TEMPLATE = "note_template";
     private static final String KEY_APPEND_TIMESTAMP = "append_timestamp";
+    private static final String KEY_AUTO_SAVE_VOICE = "auto_save_voice";
 
     public static final String DEFAULT_FILE_NAME = "Inbox.md";
     public static final String DEFAULT_TEMPLATE = "- **%TIME%** %CONTENT%";
@@ -89,5 +90,34 @@ public class SettingsManager {
 
     public void setAppendTimestamp(boolean append) {
         prefs.edit().putBoolean(KEY_APPEND_TIMESTAMP, append).apply();
+    }
+
+    public boolean isAutoSaveVoice() {
+        return prefs.getBoolean(KEY_AUTO_SAVE_VOICE, true);
+    }
+
+    public void setAutoSaveVoice(boolean autoSave) {
+        prefs.edit().putBoolean(KEY_AUTO_SAVE_VOICE, autoSave).apply();
+    }
+
+    public static final String KEY_VOICE_SUPPORT_STATUS = "voice_support_status_v2";
+    public static final int VOICE_STATUS_UNKNOWN = 0;
+    public static final int VOICE_STATUS_SUPPORTED = 1;
+    public static final int VOICE_STATUS_UNSUPPORTED = 2;
+
+    public int getVoiceSupportStatus() {
+        return prefs.getInt(KEY_VOICE_SUPPORT_STATUS, VOICE_STATUS_UNKNOWN);
+    }
+
+    public void setVoiceSupportStatus(int status) {
+        prefs.edit().putInt(KEY_VOICE_SUPPORT_STATUS, status).apply();
+    }
+
+    public boolean isVoiceAvailable() {
+        return getVoiceSupportStatus() == VOICE_STATUS_SUPPORTED;
+    }
+
+    public void resetVoiceSupportStatus() {
+        prefs.edit().remove(KEY_VOICE_SUPPORT_STATUS).apply();
     }
 }

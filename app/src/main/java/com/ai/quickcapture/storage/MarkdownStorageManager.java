@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.util.Log;
 import androidx.annotation.NonNull;
 
 import java.io.File;
@@ -20,6 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MarkdownStorageManager {
+    private static final String TAG = "QuickCapture";
+
     private final Context appContext;
     private final SettingsManager settingsManager;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -99,7 +102,7 @@ public class MarkdownStorageManager {
                     }
 
                     if (targetFileUri == null) {
-                        throw new IllegalStateException("无法在所选目录中创建文件: " + targetFileName);
+                        throw new IllegalStateException("无法在所选目录中创建目标文件");
                     }
 
                     try (OutputStream os = resolver.openOutputStream(targetFileUri, "wa")) {
@@ -130,6 +133,7 @@ public class MarkdownStorageManager {
                 final String finalLocation = savedTargetDescription;
                 mainHandler.post(() -> callback.onSuccess(finalLocation));
             } catch (final Exception e) {
+                Log.e(TAG, "[StorageManager] 写入异常", e);
                 mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "保存失败"));
             }
         });

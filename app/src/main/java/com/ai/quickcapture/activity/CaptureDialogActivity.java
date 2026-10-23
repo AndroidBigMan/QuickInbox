@@ -3,11 +3,16 @@ package com.ai.quickcapture.activity;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.RecognizerIntent;
+import android.util.Log;
 import android.widget.Toast;
 import androidx.activity.ComponentActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.compose.ui.platform.ComposeView;
@@ -20,8 +25,12 @@ import com.ai.quickcapture.ui.bridge.CaptureUiState;
 import com.ai.quickcapture.ui.bridge.UiBridge;
 import com.ai.quickcapture.voice.SpeechVoiceManager;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class CaptureDialogActivity extends ComponentActivity implements UiBridge.CaptureActionListener {
 
+    private static final String TAG = "QuickCapture";
     private static final int REQ_RECORD_AUDIO = 1001;
 
     private ComposeView composeView;
@@ -33,6 +42,24 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
     private String voiceBaseText = "";
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    private final ActivityResultLauncher<Intent> systemSpeechLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                int resultCode = result.getResultCode();
+                Intent data = result.getData();
+
+                if (resultCode == RESULT_OK && data != null) {
+                    ArrayList<String> matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    if (matches != null && !matches.isEmpty()) {
+                        String text = matches.get(0);
+                        onSpeechResultReceived(text);
+                    } else {
+                        updateStatusMessage("未获取到语音文字", false);
+                    }
+                } else {
+                    updateStatusMessage(null, false);
+                }
+            });
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,6 +68,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         storageManager = new MarkdownStorageManager(this);
         speechManager = new SpeechVoiceManager(this);
 
+        boolean voiceAvailable = settingsManager.isVoiceAvailable();
         String initialText = extractInitialText(getIntent());
 
         currentUiState = new CaptureUiState(
@@ -49,13 +77,34 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 false,
                 settingsManager.getTargetFileName(),
                 null,
-                false
+                false,
+                voiceAvailable
         );
 
         composeView = new ComposeView(this);
         setContentView(composeView);
 
         renderUi();
+
+        // 若当前未明确系统语音状态，异步静默探测系统离线语音包
+        if (settingsManager.getVoiceSupportStatus() == SettingsManager.VOICE_STATUS_UNKNOWN) {
+            speechManager.checkChineseSupportAsync((supported, reason) -> {
+                runOnUiThread(() -> {
+                    if (currentUiState.isVoiceAvailable() != supported) {
+                        currentUiState = new CaptureUiState(
+                                currentUiState.getInputText(),
+                                false,
+                                currentUiState.isSaving(),
+                                currentUiState.getTargetFileName(),
+                                null,
+                                false,
+                                supported
+                        );
+                        renderUi();
+                    }
+                });
+            });
+        }
     }
 
     @Override
@@ -70,7 +119,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     currentUiState.isSaving(),
                     currentUiState.getTargetFileName(),
                     null,
-                    false
+                    false,
+                    currentUiState.isVoiceAvailable()
             );
             renderUi();
         }
@@ -97,7 +147,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 currentUiState.isSaving(),
                 currentUiState.getTargetFileName(),
                 null,
-                false
+                false,
+                currentUiState.isVoiceAvailable()
         );
         renderUi();
     }
@@ -108,15 +159,18 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         if (textToSave.isEmpty()) {
             return;
         }
+        saveNoteText(textToSave);
+    }
 
-        // Set saving state
+    private void saveNoteText(@NonNull final String textToSave) {
         currentUiState = new CaptureUiState(
-                currentUiState.getInputText(),
+                textToSave,
                 false,
                 true,
                 currentUiState.getTargetFileName(),
-                "正在写入...",
-                false
+                "正在写入文件...",
+                false,
+                currentUiState.isVoiceAvailable()
         );
         renderUi();
 
@@ -125,16 +179,16 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             public void onSuccess(@NonNull String savedLocation) {
                 runOnUiThread(() -> {
                     currentUiState = new CaptureUiState(
-                            currentUiState.getInputText(),
+                            textToSave,
                             false,
                             false,
                             currentUiState.getTargetFileName(),
-                            "已存入 " + savedLocation,
-                            true
+                            "已成功存入 " + savedLocation,
+                            true,
+                            currentUiState.isVoiceAvailable()
                     );
                     renderUi();
 
-                    // Auto finish after short delay for visual feedback
                     handler.postDelayed(() -> {
                         if (!isFinishing() && !isDestroyed()) {
                             finish();
@@ -145,14 +199,16 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
             @Override
             public void onError(@NonNull String errorMessage) {
+                Log.e(TAG, "[DialogActivity] 文件保存失败: " + errorMessage);
                 runOnUiThread(() -> {
                     currentUiState = new CaptureUiState(
-                            currentUiState.getInputText(),
+                            textToSave,
                             false,
                             false,
                             currentUiState.getTargetFileName(),
                             "保存失败: " + errorMessage,
-                            false
+                            false,
+                            currentUiState.isVoiceAvailable()
                     );
                     renderUi();
                 });
@@ -162,6 +218,10 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
     @Override
     public void onVoiceToggle() {
+        if (!currentUiState.isVoiceAvailable()) {
+            return;
+        }
+
         if (currentUiState.isRecording()) {
             speechManager.stopListening();
             currentUiState = new CaptureUiState(
@@ -170,14 +230,16 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     currentUiState.isSaving(),
                     currentUiState.getTargetFileName(),
                     null,
-                    false
+                    false,
+                    currentUiState.isVoiceAvailable()
             );
             renderUi();
             return;
         }
 
-        // Check permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        // 检查录音权限
+        int permissionCheck = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO);
+        if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
             return;
         }
@@ -187,6 +249,12 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
     private void startVoiceInput() {
         voiceBaseText = currentUiState.getInputText().trim();
+
+        if (!speechManager.isSupported()) {
+            launchSystemSpeechDialog();
+            return;
+        }
+
         speechManager.startListening(new SpeechVoiceManager.SpeechCallback() {
             @Override
             public void onListeningStateChanged(boolean listening) {
@@ -196,8 +264,9 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             listening,
                             currentUiState.isSaving(),
                             currentUiState.getTargetFileName(),
-                            listening ? "正在聆听..." : null,
-                            false
+                            listening ? "正在聆听语音输入..." : null,
+                            false,
+                            currentUiState.isVoiceAvailable()
                     );
                     renderUi();
                 });
@@ -213,7 +282,8 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                             currentUiState.isSaving(),
                             currentUiState.getTargetFileName(),
                             "正在识别...",
-                            false
+                            false,
+                            currentUiState.isVoiceAvailable()
                     );
                     renderUi();
                 });
@@ -221,34 +291,121 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
             @Override
             public void onFinalResult(@NonNull String text) {
+                onSpeechResultReceived(text);
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage, boolean canFallbackToSystemDialog) {
+                Log.w(TAG, "[DialogActivity] 语音识别报错: " + errorMessage);
                 runOnUiThread(() -> {
-                    String combined = voiceBaseText.isEmpty() ? text : voiceBaseText + " " + text;
-                    currentUiState = new CaptureUiState(
-                            combined,
-                            false,
-                            currentUiState.isSaving(),
-                            currentUiState.getTargetFileName(),
-                            "识别完成",
-                            false
-                    );
-                    renderUi();
+                    if (canFallbackToSystemDialog) {
+                        launchSystemSpeechDialog();
+                    } else {
+                        currentUiState = new CaptureUiState(
+                                voiceBaseText,
+                                false,
+                                currentUiState.isSaving(),
+                                currentUiState.getTargetFileName(),
+                                errorMessage,
+                                false,
+                                currentUiState.isVoiceAvailable()
+                        );
+                        renderUi();
+                    }
                 });
             }
 
             @Override
-            public void onError(@NonNull String errorMessage) {
+            public void onVoiceSupportDisabled(@NonNull String reason) {
+                Log.w(TAG, "[DialogActivity] 捕获到系统不支持离线中文语音: " + reason);
                 runOnUiThread(() -> {
                     currentUiState = new CaptureUiState(
                             voiceBaseText,
                             false,
                             currentUiState.isSaving(),
                             currentUiState.getTargetFileName(),
-                            errorMessage,
+                            "已自动隐藏录音按钮，可直接使用输入法语音",
+                            false,
                             false
                     );
                     renderUi();
                 });
             }
+        });
+    }
+
+    private void launchSystemSpeechDialog() {
+        try {
+            Intent intent = SpeechVoiceManager.createSystemSpeechIntent("请说话，将自动写入收件箱...");
+            PackageManager pm = getPackageManager();
+            List<ResolveInfo> resolves = pm.queryIntentActivities(intent, 0);
+
+            if (resolves != null && !resolves.isEmpty()) {
+                systemSpeechLauncher.launch(intent);
+            } else {
+                updateStatusMessage("系统未内置语音服务，建议直接使用键盘自带语音键", false);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "[DialogActivity] 唤起系统语音弹窗失败", e);
+            runOnUiThread(() -> {
+                currentUiState = new CaptureUiState(
+                        voiceBaseText,
+                        false,
+                        currentUiState.isSaving(),
+                        currentUiState.getTargetFileName(),
+                        "唤起语音失败: " + e.getMessage(),
+                        false,
+                        currentUiState.isVoiceAvailable()
+                );
+                renderUi();
+            });
+        }
+    }
+
+    private void onSpeechResultReceived(@NonNull String text) {
+        runOnUiThread(() -> {
+            String combined = voiceBaseText.isEmpty() ? text.trim() : voiceBaseText + " " + text.trim();
+            boolean autoSave = settingsManager.isAutoSaveVoice();
+
+            if (autoSave && !combined.isEmpty()) {
+                currentUiState = new CaptureUiState(
+                        combined,
+                        false,
+                        true,
+                        currentUiState.getTargetFileName(),
+                        "正在自动存入文件...",
+                        true,
+                        currentUiState.isVoiceAvailable()
+                );
+                renderUi();
+                saveNoteText(combined);
+            } else {
+                currentUiState = new CaptureUiState(
+                        combined,
+                        false,
+                        false,
+                        currentUiState.getTargetFileName(),
+                        "识别完成，点击「存入」即可写入文件",
+                        true,
+                        currentUiState.isVoiceAvailable()
+                );
+                renderUi();
+            }
+        });
+    }
+
+    private void updateStatusMessage(@Nullable String message, boolean isSuccess) {
+        runOnUiThread(() -> {
+            currentUiState = new CaptureUiState(
+                    currentUiState.getInputText(),
+                    false,
+                    currentUiState.isSaving(),
+                    currentUiState.getTargetFileName(),
+                    message,
+                    isSuccess,
+                    currentUiState.isVoiceAvailable()
+            );
+            renderUi();
         });
     }
 
@@ -259,6 +416,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startVoiceInput();
             } else {
+                Log.w(TAG, "[DialogActivity] 录音权限被拒绝");
                 Toast.makeText(this, "需要麦克风权限以支持语音输入", Toast.LENGTH_SHORT).show();
             }
         }

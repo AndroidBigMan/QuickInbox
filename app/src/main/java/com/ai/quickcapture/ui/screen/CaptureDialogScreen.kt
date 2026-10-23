@@ -156,7 +156,13 @@ fun CaptureDialogScreen(
                         .focusRequester(focusRequester),
                     placeholder = {
                         Text(
-                            text = if (uiState.isRecording) "正在聆听语音输入..." else "快速记录灵感、待办或备忘...",
+                            text = if (uiState.isRecording) {
+                                "正在聆听语音输入..."
+                            } else if (uiState.isVoiceAvailable) {
+                                "快速记录灵感、待办（点击麦克风或直接输入）..."
+                            } else {
+                                "快速记录灵感、待办（支持输入法语音）..."
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             fontSize = 15.sp
                         )
@@ -214,8 +220,11 @@ fun CaptureDialogScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left: Close Button & Voice Recording Button
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Left: Close Button & Voice Recording Button (Hidden if system unsupported)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         IconButton(onClick = onDismiss) {
                             Icon(
                                 imageVector = Icons.Default.Close,
@@ -224,34 +233,40 @@ fun CaptureDialogScreen(
                             )
                         }
 
-                        // Voice Button
-                        val micBgColor by animateColorAsState(
-                            targetValue = if (uiState.isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant,
-                            label = "micBg"
-                        )
-                        val micIconColor by animateColorAsState(
-                            targetValue = if (uiState.isRecording) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant,
-                            label = "micIcon"
-                        )
-
-                        Surface(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onVoiceToggle()
-                                },
-                            shape = CircleShape,
-                            color = micBgColor
+                        // Voice Button: dynamically displayed only when system supports Chinese speech recognition
+                        AnimatedVisibility(
+                            visible = uiState.isVoiceAvailable,
+                            enter = fadeIn() + scaleIn(),
+                            exit = fadeOut() + scaleOut()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(if (uiState.isRecording) R.drawable.ic_stop else R.drawable.ic_mic),
-                                    contentDescription = "语音输入",
-                                    tint = micIconColor,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            val micBgColor by animateColorAsState(
+                                targetValue = if (uiState.isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant,
+                                label = "micBg"
+                            )
+                            val micIconColor by animateColorAsState(
+                                targetValue = if (uiState.isRecording) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant,
+                                label = "micIcon"
+                            )
+
+                            Surface(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onVoiceToggle()
+                                    },
+                                shape = CircleShape,
+                                color = micBgColor
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        painter = painterResource(if (uiState.isRecording) R.drawable.ic_stop else R.drawable.ic_mic),
+                                        contentDescription = "语音输入",
+                                        tint = micIconColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
