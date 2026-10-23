@@ -35,6 +35,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +47,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,7 +78,8 @@ fun CaptureDialogScreen(
     onPasteClipboard: (String) -> Unit,
     onDismissClipboard: () -> Unit,
     onToggleTodoPrefix: () -> Unit,
-    onAppendTag: (String) -> Unit
+    onAppendTag: (String) -> Unit,
+    onSelectTargetFile: (String) -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
     val haptic = LocalHapticFeedback.current
@@ -141,17 +146,85 @@ fun CaptureDialogScreen(
                         )
                     }
 
-                    // Target File Tag (shows resolved file name e.g. 2026-10-23.md)
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ) {
-                        Text(
-                            text = "📁 ${uiState.targetFileName}",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // Target File Tag (shows resolved file name e.g. 2026-10-23.md, with dropdown switch)
+                    var showTargetMenu by remember { mutableStateOf(false) }
+                    Box {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showTargetMenu = true
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📁 ${uiState.targetFileName}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "▾",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        val presets = if (uiState.targetPresets.isNotEmpty()) uiState.targetPresets else listOf(uiState.rawTargetPattern)
+                        DropdownMenu(
+                            expanded = showTargetMenu,
+                            onDismissRequest = { showTargetMenu = false }
+                        ) {
+                            Text(
+                                text = "切换存入目标文件",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                            presets.forEach { preset ->
+                                val isSelected = preset == uiState.rawTargetPattern
+                                val preview = com.ai.quickcapture.storage.SettingsManager.resolveFileName(preset)
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = preset,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    ),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                if (isSelected) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            if (preset.contains("%") || preset.contains("{")) {
+                                                Text(
+                                                    text = "-> $preview",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        showTargetMenu = false
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelectTargetFile(preset)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
 

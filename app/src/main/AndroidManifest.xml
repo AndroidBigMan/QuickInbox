@@ -40,6 +40,8 @@
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
             android:noHistory="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:theme="@style/Theme.QuickInbox.TranslucentDialog"
             android:windowSoftInputMode="stateVisible|adjustResize">
             <!-- Support system text sharing into QuickInbox -->
@@ -47,6 +49,11 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Support System Assist (Long-press Power / Corner Swipe / Home Long-press) -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

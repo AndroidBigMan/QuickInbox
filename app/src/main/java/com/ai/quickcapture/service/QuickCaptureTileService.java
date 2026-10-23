@@ -7,6 +7,7 @@ import android.os.Build;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import com.ai.quickcapture.activity.CaptureDialogActivity;
+import com.ai.quickcapture.storage.SettingsManager;
 
 public class QuickCaptureTileService extends TileService {
 
@@ -26,7 +27,8 @@ public class QuickCaptureTileService extends TileService {
 
         Runnable launchRunnable = this::launchCaptureDialog;
 
-        if (isLocked()) {
+        SettingsManager sm = SettingsManager.getInstance(this);
+        if (isLocked() && !sm.isLockscreenCaptureEnabled()) {
             unlockAndRun(launchRunnable);
         } else {
             launchRunnable.run();

@@ -20,6 +20,7 @@ object UiBridge {
         fun onDismissClipboard()
         fun onToggleTodoPrefix()
         fun onAppendTag(tag: String)
+        fun onSelectTargetFile(targetPattern: String)
     }
 
     /**
@@ -27,10 +28,13 @@ object UiBridge {
      */
     interface MainActionListener {
         fun onPickFolder()
-        fun onSaveSettings(fileName: String, template: String, autoSaveVoice: Boolean)
+        fun onSaveSettings(fileName: String, template: String, autoSaveVoice: Boolean, lockscreenCapture: Boolean)
         fun onTestAppend()
         fun onAddTilePrompt()
         fun onRecheckVoiceSupport()
+        fun onOpenAssistSettings()
+        fun onAddTargetPreset(preset: String)
+        fun onDeleteTargetPreset(preset: String)
     }
 
     @JvmStatic
@@ -56,7 +60,8 @@ object UiBridge {
                         onPasteClipboard = { listener.onPasteClipboard(it) },
                         onDismissClipboard = { listener.onDismissClipboard() },
                         onToggleTodoPrefix = { listener.onToggleTodoPrefix() },
-                        onAppendTag = { listener.onAppendTag(it) }
+                        onAppendTag = { listener.onAppendTag(it) },
+                        onSelectTargetFile = { listener.onSelectTargetFile(it) }
                     )
                 }
             }
@@ -70,6 +75,8 @@ object UiBridge {
         fileName: String,
         template: String,
         autoSaveVoice: Boolean,
+        lockscreenCapture: Boolean,
+        targetPresets: List<String>,
         isVoiceAvailable: Boolean,
         lastTestResult: String?,
         listener: MainActionListener
@@ -85,13 +92,20 @@ object UiBridge {
                         fileName = fileName,
                         template = template,
                         autoSaveVoice = autoSaveVoice,
+                        lockscreenCapture = lockscreenCapture,
+                        targetPresets = targetPresets,
                         isVoiceAvailable = isVoiceAvailable,
                         lastTestResult = lastTestResult,
                         onPickFolder = { listener.onPickFolder() },
-                        onSaveSettings = { fName, tpl, autoSave -> listener.onSaveSettings(fName, tpl, autoSave) },
+                        onSaveSettings = { fName, tpl, autoSave, lockscreen ->
+                            listener.onSaveSettings(fName, tpl, autoSave, lockscreen)
+                        },
                         onTestAppend = { listener.onTestAppend() },
                         onAddTilePrompt = { listener.onAddTilePrompt() },
-                        onRecheckVoiceSupport = { listener.onRecheckVoiceSupport() }
+                        onRecheckVoiceSupport = { listener.onRecheckVoiceSupport() },
+                        onOpenAssistSettings = { listener.onOpenAssistSettings() },
+                        onAddTargetPreset = { listener.onAddTargetPreset(it) },
+                        onDeleteTargetPreset = { listener.onDeleteTargetPreset(it) }
                     )
                 }
             }

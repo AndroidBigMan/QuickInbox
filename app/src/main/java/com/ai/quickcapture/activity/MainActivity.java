@@ -78,6 +78,8 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
                 settingsManager.getRawTargetFileName(),
                 settingsManager.getTemplate(),
                 settingsManager.isAutoSaveVoice(),
+                settingsManager.isLockscreenCaptureEnabled(),
+                settingsManager.getTargetPresets(),
                 settingsManager.isVoiceAvailable(),
                 lastTestResult,
                 this
@@ -94,7 +96,7 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
     }
 
     @Override
-    public void onSaveSettings(@NonNull String fileName, @NonNull String template, boolean autoSaveVoice) {
+    public void onSaveSettings(@NonNull String fileName, @NonNull String template, boolean autoSaveVoice, boolean lockscreenCapture) {
         if (!fileName.trim().isEmpty()) {
             settingsManager.setTargetFileName(fileName.trim());
         }
@@ -102,9 +104,39 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
             settingsManager.setTemplate(template.trim());
         }
         settingsManager.setAutoSaveVoice(autoSaveVoice);
+        settingsManager.setLockscreenCaptureEnabled(lockscreenCapture);
 
         Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
-        lastTestResult = "✅ 配置已更新（目标: " + settingsManager.getTargetFileName() + "，语音直存: " + (autoSaveVoice ? "开启" : "关闭") + "）";
+        lastTestResult = "✅ 配置已更新（目标: " + settingsManager.getTargetFileName() + "，锁屏速记: " + (lockscreenCapture ? "开启" : "关闭") + "）";
+        renderUi();
+    }
+
+    @Override
+    public void onOpenAssistSettings() {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS);
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+                startActivity(intent);
+            } catch (Exception ex) {
+                Toast.makeText(this, "请在系统「默认应用 -> 默认数字助手」中选择 QuickInbox", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    @Override
+    public void onAddTargetPreset(@NonNull String preset) {
+        settingsManager.addTargetPreset(preset);
+        lastTestResult = "✅ 已添加新目标预设: " + preset;
+        renderUi();
+    }
+
+    @Override
+    public void onDeleteTargetPreset(@NonNull String preset) {
+        settingsManager.removeTargetPreset(preset);
+        lastTestResult = "🗑️ 已移除目标预设: " + preset;
         renderUi();
     }
 

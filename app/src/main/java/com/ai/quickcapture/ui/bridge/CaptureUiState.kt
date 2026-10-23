@@ -8,5 +8,7 @@ data class CaptureUiState @JvmOverloads constructor(
     val statusMessage: String? = null,
     val isSuccess: Boolean = false,
     val isVoiceAvailable: Boolean = false,
-    val clipboardText: String? = null
+    val clipboardText: String? = null,
+    val rawTargetPattern: String = "Inbox.md",
+    val targetPresets: List<String> = emptyList()
 )

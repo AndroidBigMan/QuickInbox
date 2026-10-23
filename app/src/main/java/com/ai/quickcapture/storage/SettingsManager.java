@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SettingsManager {
     private static final String PREF_NAME = "quick_inbox_settings";
@@ -13,9 +15,17 @@ public class SettingsManager {
     private static final String KEY_TEMPLATE = "note_template";
     private static final String KEY_APPEND_TIMESTAMP = "append_timestamp";
     private static final String KEY_AUTO_SAVE_VOICE = "auto_save_voice";
+    public static final String KEY_LOCKSCREEN_CAPTURE = "lockscreen_capture";
+    public static final String KEY_TARGET_PRESETS = "target_file_presets";
 
     public static final String DEFAULT_FILE_NAME = "Inbox.md";
     public static final String DEFAULT_TEMPLATE = "- **%TIME%** %CONTENT%";
+    private static final String[] DEFAULT_PRESETS = new String[]{
+            "Inbox.md",
+            "Daily/%YYYY%-%MM%-%DD%.md",
+            "Todo.md",
+            "Reading.md"
+    };
 
     private static volatile SettingsManager instance;
     private final SharedPreferences prefs;
@@ -152,5 +162,68 @@ public class SettingsManager {
 
     public void resetVoiceSupportStatus() {
         prefs.edit().remove(KEY_VOICE_SUPPORT_STATUS).apply();
+    }
+
+    public boolean isLockscreenCaptureEnabled() {
+        return prefs.getBoolean(KEY_LOCKSCREEN_CAPTURE, true);
+    }
+
+    public void setLockscreenCaptureEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_LOCKSCREEN_CAPTURE, enabled).apply();
+    }
+
+    @NonNull
+    public List<String> getTargetPresets() {
+        String saved = prefs.getString(KEY_TARGET_PRESETS, null);
+        List<String> list = new ArrayList<>();
+        if (saved == null || saved.trim().isEmpty()) {
+            for (String p : DEFAULT_PRESETS) {
+                list.add(p);
+            }
+        } else {
+            String[] parts = saved.split("\n");
+            for (String p : parts) {
+                String trimmed = p.trim();
+                if (!trimmed.isEmpty() && !list.contains(trimmed)) {
+                    list.add(trimmed);
+                }
+            }
+        }
+        String current = getRawTargetFileName();
+        if (!list.contains(current)) {
+            list.add(0, current);
+        }
+        return list;
+    }
+
+    public void setTargetPresets(@NonNull List<String> presets) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : presets) {
+            String trimmed = p.trim();
+            if (!trimmed.isEmpty()) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(trimmed);
+            }
+        }
+        prefs.edit().putString(KEY_TARGET_PRESETS, sb.toString()).apply();
+    }
+
+    public void addTargetPreset(@NonNull String preset) {
+        String clean = preset.trim();
+        if (clean.isEmpty()) return;
+        if (!clean.endsWith(".md")) clean += ".md";
+        List<String> list = getTargetPresets();
+        if (!list.contains(clean)) {
+            list.add(clean);
+            setTargetPresets(list);
+        }
+    }
+
+    public void removeTargetPreset(@NonNull String preset) {
+        String clean = preset.trim();
+        List<String> list = getTargetPresets();
+        if (list.remove(clean)) {
+            setTargetPresets(list);
+        }
     }
 }

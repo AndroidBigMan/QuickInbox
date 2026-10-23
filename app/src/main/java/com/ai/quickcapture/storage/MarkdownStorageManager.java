@@ -44,6 +44,10 @@ public class MarkdownStorageManager {
     }
 
     public void appendNoteAsync(@NonNull final String content, @NonNull final StorageCallback callback) {
+        appendNoteAsync(content, null, callback);
+    }
+
+    public void appendNoteAsync(@NonNull final String content, @Nullable final String customTargetFileName, @NonNull final StorageCallback callback) {
         if (content.trim().isEmpty()) {
             callback.onError("内容不能为空");
             return;
@@ -62,7 +66,9 @@ public class MarkdownStorageManager {
                 }
 
                 Uri vaultUri = settingsManager.getVaultTreeUri();
-                String targetFileName = settingsManager.getTargetFileName();
+                String targetFileName = (customTargetFileName != null && !customTargetFileName.trim().isEmpty())
+                        ? SettingsManager.resolveFileName(customTargetFileName.trim())
+                        : settingsManager.getTargetFileName();
                 String savedTargetDescription;
 
                 if (vaultUri != null) {

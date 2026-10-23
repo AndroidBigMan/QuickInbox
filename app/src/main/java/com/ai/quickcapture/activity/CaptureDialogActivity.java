@@ -7,11 +7,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.RecognizerIntent;
 import android.util.Log;
+import android.view.WindowManager;
 import android.widget.Toast;
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultLauncher;
@@ -72,18 +74,35 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         storageManager = new MarkdownStorageManager(this);
         speechManager = new SpeechVoiceManager(this);
 
+        if (settingsManager.isLockscreenCaptureEnabled()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true);
+                setTurnScreenOn(true);
+            } else {
+                getWindow().addFlags(
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                );
+            }
+        }
+
         boolean voiceAvailable = settingsManager.isVoiceAvailable();
         String initialText = extractInitialText(getIntent());
+        String rawTarget = settingsManager.getRawTargetFileName();
+        List<String> presets = settingsManager.getTargetPresets();
+        String resolvedTarget = SettingsManager.resolveFileName(rawTarget);
 
         currentUiState = new CaptureUiState(
                 initialText,
                 false,
                 false,
-                settingsManager.getTargetFileName(),
+                resolvedTarget,
                 null,
                 false,
                 voiceAvailable,
-                null
+                null,
+                rawTarget,
+                presets
         );
 
         composeView = new ComposeView(this);
@@ -96,7 +115,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             speechManager.checkChineseSupportAsync((supported, reason) -> {
                 runOnUiThread(() -> {
                     if (currentUiState.isVoiceAvailable() != supported) {
-                        currentUiState = new CaptureUiState(
+                        currentUiState = copyState(
                                 currentUiState.getInputText(),
                                 false,
                                 currentUiState.isSaving(),
@@ -111,6 +130,52 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 });
             });
         }
+    }
+
+    private CaptureUiState copyState(
+            String inputText,
+            boolean isRecording,
+            boolean isSaving,
+            String targetFileName,
+            String statusMessage,
+            boolean isSuccess,
+            boolean isVoiceAvailable,
+            String clipboardText
+    ) {
+        String rawTarget = currentUiState != null ? currentUiState.getRawTargetPattern() : settingsManager.getRawTargetFileName();
+        List<String> presets = currentUiState != null ? currentUiState.getTargetPresets() : settingsManager.getTargetPresets();
+        return new CaptureUiState(
+                inputText,
+                isRecording,
+                isSaving,
+                targetFileName,
+                statusMessage,
+                isSuccess,
+                isVoiceAvailable,
+                clipboardText,
+                rawTarget,
+                presets
+        );
+    }
+
+    @Override
+    public void onSelectTargetFile(@NonNull String targetPattern) {
+        String clean = targetPattern.trim();
+        String resolved = SettingsManager.resolveFileName(clean);
+        settingsManager.setTargetFileName(clean);
+        currentUiState = new CaptureUiState(
+                currentUiState.getInputText(),
+                currentUiState.isRecording(),
+                currentUiState.isSaving(),
+                resolved,
+                null,
+                false,
+                currentUiState.isVoiceAvailable(),
+                currentUiState.getClipboardText(),
+                clean,
+                currentUiState.getTargetPresets()
+        );
+        renderUi();
     }
 
     @Override
@@ -133,7 +198,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                         if (!clipText.isEmpty()
                                 && !clipText.equals(currentUiState.getInputText().trim())
                                 && !clipText.equals(lastDismissedClipboardText)) {
-                            currentUiState = new CaptureUiState(
+                            currentUiState = copyState(
                                     currentUiState.getInputText(),
                                     currentUiState.isRecording(),
                                     currentUiState.isSaving(),
@@ -158,7 +223,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         lastDismissedClipboardText = null;
         String sharedText = extractInitialText(intent);
         if (!sharedText.isEmpty()) {
-            currentUiState = new CaptureUiState(
+            currentUiState = copyState(
                     sharedText,
                     currentUiState.isRecording(),
                     currentUiState.isSaving(),
@@ -191,7 +256,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         if (clip != null && newText.trim().equals(clip.trim())) {
             clip = null;
         }
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 newText,
                 currentUiState.isRecording(),
                 currentUiState.isSaving(),
@@ -214,7 +279,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
     }
 
     private void saveNoteText(@NonNull final String textToSave) {
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 textToSave,
                 false,
                 true,
@@ -226,11 +291,11 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         );
         renderUi();
 
-        storageManager.appendNoteAsync(textToSave, new MarkdownStorageManager.StorageCallback() {
+        storageManager.appendNoteAsync(textToSave, currentUiState.getRawTargetPattern(), new MarkdownStorageManager.StorageCallback() {
             @Override
             public void onSuccess(@NonNull String savedLocation) {
                 runOnUiThread(() -> {
-                    currentUiState = new CaptureUiState(
+                    currentUiState = copyState(
                             textToSave,
                             false,
                             false,
@@ -254,7 +319,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             public void onError(@NonNull String errorMessage) {
                 Log.e(TAG, "[DialogActivity] 文件保存失败: " + errorMessage);
                 runOnUiThread(() -> {
-                    currentUiState = new CaptureUiState(
+                    currentUiState = copyState(
                             textToSave,
                             false,
                             false,
@@ -275,7 +340,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         lastDismissedClipboardText = text;
         String current = currentUiState.getInputText().trim();
         String combined = current.isEmpty() ? text : current + "\n" + text;
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 combined,
                 currentUiState.isRecording(),
                 currentUiState.isSaving(),
@@ -291,7 +356,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
     @Override
     public void onDismissClipboard() {
         lastDismissedClipboardText = currentUiState.getClipboardText();
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 currentUiState.getInputText(),
                 currentUiState.isRecording(),
                 currentUiState.isSaving(),
@@ -317,7 +382,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         } else {
             updated = "- [ ] " + current;
         }
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 updated,
                 currentUiState.isRecording(),
                 currentUiState.isSaving(),
@@ -342,7 +407,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         } else {
             updated = current + " " + tagStr + " ";
         }
-        currentUiState = new CaptureUiState(
+        currentUiState = copyState(
                 updated,
                 currentUiState.isRecording(),
                 currentUiState.isSaving(),
@@ -363,7 +428,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
         if (currentUiState.isRecording()) {
             speechManager.stopListening();
-            currentUiState = new CaptureUiState(
+            currentUiState = copyState(
                     currentUiState.getInputText(),
                     false,
                     currentUiState.isSaving(),
@@ -399,7 +464,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             @Override
             public void onListeningStateChanged(boolean listening) {
                 runOnUiThread(() -> {
-                    currentUiState = new CaptureUiState(
+                    currentUiState = copyState(
                             currentUiState.getInputText(),
                             listening,
                             currentUiState.isSaving(),
@@ -417,7 +482,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             public void onPartialResult(@NonNull String partialText) {
                 runOnUiThread(() -> {
                     String combined = voiceBaseText.isEmpty() ? partialText : voiceBaseText + " " + partialText;
-                    currentUiState = new CaptureUiState(
+                    currentUiState = copyState(
                             combined,
                             true,
                             currentUiState.isSaving(),
@@ -443,7 +508,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                     if (canFallbackToSystemDialog) {
                         launchSystemSpeechDialog();
                     } else {
-                        currentUiState = new CaptureUiState(
+                        currentUiState = copyState(
                                 voiceBaseText,
                                 false,
                                 currentUiState.isSaving(),
@@ -462,7 +527,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             public void onVoiceSupportDisabled(@NonNull String reason) {
                 Log.w(TAG, "[DialogActivity] 捕获到系统不支持离线中文语音: " + reason);
                 runOnUiThread(() -> {
-                    currentUiState = new CaptureUiState(
+                    currentUiState = copyState(
                             voiceBaseText,
                             false,
                             currentUiState.isSaving(),
@@ -492,7 +557,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
         } catch (Exception e) {
             Log.e(TAG, "[DialogActivity] 唤起系统语音弹窗失败", e);
             runOnUiThread(() -> {
-                currentUiState = new CaptureUiState(
+                currentUiState = copyState(
                         voiceBaseText,
                         false,
                         currentUiState.isSaving(),
@@ -513,7 +578,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
             boolean autoSave = settingsManager.isAutoSaveVoice();
 
             if (autoSave && !combined.isEmpty()) {
-                currentUiState = new CaptureUiState(
+                currentUiState = copyState(
                         combined,
                         false,
                         true,
@@ -526,7 +591,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
                 renderUi();
                 saveNoteText(combined);
             } else {
-                currentUiState = new CaptureUiState(
+                currentUiState = copyState(
                         combined,
                         false,
                         false,
@@ -543,7 +608,7 @@ public class CaptureDialogActivity extends ComponentActivity implements UiBridge
 
     private void updateStatusMessage(@Nullable String message, boolean isSuccess) {
         runOnUiThread(() -> {
-            currentUiState = new CaptureUiState(
+            currentUiState = copyState(
                     currentUiState.getInputText(),
                     false,
                     currentUiState.isSaving(),

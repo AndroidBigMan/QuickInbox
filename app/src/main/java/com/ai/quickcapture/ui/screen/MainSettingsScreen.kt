@@ -19,13 +19,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,17 +57,25 @@ fun MainSettingsScreen(
     fileName: String,
     template: String,
     autoSaveVoice: Boolean,
+    lockscreenCapture: Boolean,
+    targetPresets: List<String>,
     isVoiceAvailable: Boolean,
     lastTestResult: String?,
     onPickFolder: () -> Unit,
-    onSaveSettings: (String, String, Boolean) -> Unit,
+    onSaveSettings: (String, String, Boolean, Boolean) -> Unit,
     onTestAppend: () -> Unit,
     onAddTilePrompt: () -> Unit,
-    onRecheckVoiceSupport: () -> Unit
+    onRecheckVoiceSupport: () -> Unit,
+    onOpenAssistSettings: () -> Unit,
+    onAddTargetPreset: (String) -> Unit,
+    onDeleteTargetPreset: (String) -> Unit
 ) {
     var editFileName by remember(fileName) { mutableStateOf(fileName) }
     var editTemplate by remember(template) { mutableStateOf(template) }
     var editAutoSaveVoice by remember(autoSaveVoice) { mutableStateOf(autoSaveVoice) }
+    var editLockscreenCapture by remember(lockscreenCapture) { mutableStateOf(lockscreenCapture) }
+    var showAddPresetDialog by remember { mutableStateOf(false) }
+    var newPresetInput by remember { mutableStateOf("") }
 
     Scaffold { innerPadding ->
         Column(
@@ -177,6 +189,56 @@ fun MainSettingsScreen(
                         modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "多目标文件预设 (速记窗右上角可随时切换):",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (showAddPresetDialog) "取消添加" else "+ 添加预设",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { showAddPresetDialog = !showAddPresetDialog }
+                        )
+                    }
+
+                    if (showAddPresetDialog) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = newPresetInput,
+                                onValueChange = { newPresetInput = it },
+                                placeholder = { Text("如 Work.md 或 Ideas/%YYYY%-%MM%.md", fontSize = 12.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    if (newPresetInput.isNotBlank()) {
+                                        onAddTargetPreset(newPresetInput.trim())
+                                        newPresetInput = ""
+                                        showAddPresetDialog = false
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("添加", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
@@ -185,25 +247,22 @@ fun MainSettingsScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        PresetChip("Inbox.md") {
-                            editFileName = "Inbox.md"
-                            onSaveSettings("Inbox.md", editTemplate, editAutoSaveVoice)
-                        }
-                        PresetChip("%YYYY%-%MM%-%DD%.md") {
-                            editFileName = "%YYYY%-%MM%-%DD%.md"
-                            onSaveSettings("%YYYY%-%MM%-%DD%.md", editTemplate, editAutoSaveVoice)
-                        }
-                        PresetChip("Daily/%YYYY%-%MM%-%DD%.md") {
-                            editFileName = "Daily/%YYYY%-%MM%-%DD%.md"
-                            onSaveSettings("Daily/%YYYY%-%MM%-%DD%.md", editTemplate, editAutoSaveVoice)
-                        }
-                        PresetChip("{{date}}.md") {
-                            editFileName = "{{date}}.md"
-                            onSaveSettings("{{date}}.md", editTemplate, editAutoSaveVoice)
+                        targetPresets.forEach { preset ->
+                            PresetChip(
+                                label = preset,
+                                isSelected = preset == editFileName,
+                                onClick = {
+                                    editFileName = preset
+                                    onSaveSettings(preset, editTemplate, editAutoSaveVoice, editLockscreenCapture)
+                                },
+                                onDelete = if (targetPresets.size > 1 && preset != editFileName) {
+                                    { onDeleteTargetPreset(preset) }
+                                } else null
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     OutlinedTextField(
                         value = editTemplate,
@@ -278,14 +337,46 @@ fun MainSettingsScreen(
                         Switch(
                             checked = editAutoSaveVoice,
                             enabled = isVoiceAvailable,
-                            onCheckedChange = { editAutoSaveVoice = it }
+                            onCheckedChange = {
+                                editAutoSaveVoice = it
+                                onSaveSettings(editFileName, editTemplate, it, editLockscreenCapture)
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Feature 7: Lockscreen Instant Capture Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "锁屏直接速记（免解锁）",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "锁屏或熄屏状态下拉通知栏点击磁贴或长按电源键，直接弹出速记窗，无需指纹或密码解锁",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = editLockscreenCapture,
+                            onCheckedChange = {
+                                editLockscreenCapture = it
+                                onSaveSettings(editFileName, editTemplate, editAutoSaveVoice, it)
+                            }
                         )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Button(
-                        onClick = { onSaveSettings(editFileName, editTemplate, editAutoSaveVoice) },
+                        onClick = { onSaveSettings(editFileName, editTemplate, editAutoSaveVoice, editLockscreenCapture) },
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -297,7 +388,7 @@ fun MainSettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Card 3: Test & QS Tile Integration
+            // Feature 8: Card for Assist & Long-Press Power Button
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -305,7 +396,39 @@ fun MainSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "3. 调试与控制中心添加",
+                        text = "3. 系统 Assist 助手 (长按电源键秒唤起)",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "将 QuickInbox 设为系统默认数字助手后：\n• 长按电源键即可毫秒级弹出速记悬浮窗\n• 全面屏手势从屏幕底角上滑直接呼出\n• 3键导航长按 Home 键直接呼出",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = onOpenAssistSettings,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("设为默认数字助手 (长按电源键)")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Card 4: Test & QS Tile Integration
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = "4. 调试与控制中心添加",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -324,7 +447,7 @@ fun MainSettingsScreen(
                     ) {
                         Button(
                             onClick = {
-                                onSaveSettings(editFileName, editTemplate, editAutoSaveVoice)
+                                onSaveSettings(editFileName, editTemplate, editAutoSaveVoice, editLockscreenCapture)
                                 onTestAppend()
                             },
                             shape = RoundedCornerShape(12.dp),
@@ -372,20 +495,39 @@ fun MainSettingsScreen(
 @Composable
 private fun PresetChip(
     label: String,
-    onClick: () -> Unit
+    isSelected: Boolean = false,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                ),
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (onDelete != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "删除预设",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clickable { onDelete() }
+                )
+            }
+        }
     }
 }
