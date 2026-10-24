@@ -12,3 +12,5 @@ captures
 *.aab
 *.ap_
 *.dex
+*.jks
+*.keystore

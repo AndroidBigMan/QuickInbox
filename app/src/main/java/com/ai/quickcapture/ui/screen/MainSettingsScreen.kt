@@ -59,6 +59,7 @@ fun MainSettingsScreen(
     autoSaveVoice: Boolean,
     lockscreenCapture: Boolean,
     targetPresets: List<String>,
+    voiceEngineType: Int,
     isVoiceAvailable: Boolean,
     lastTestResult: String?,
     onPickFolder: () -> Unit,
@@ -68,7 +69,8 @@ fun MainSettingsScreen(
     onRecheckVoiceSupport: () -> Unit,
     onOpenAssistSettings: () -> Unit,
     onAddTargetPreset: (String) -> Unit,
-    onDeleteTargetPreset: (String) -> Unit
+    onDeleteTargetPreset: (String) -> Unit,
+    onSwitchVoiceEngine: (Int) -> Unit
 ) {
     var editFileName by remember(fileName) { mutableStateOf(fileName) }
     var editTemplate by remember(template) { mutableStateOf(template) }
@@ -275,7 +277,7 @@ fun MainSettingsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // System Voice Support Banner
+                    // Voice Engine Selection & Status Banner
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = if (isVoiceAvailable) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
@@ -289,7 +291,7 @@ fun MainSettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = if (isVoiceAvailable) "🎙️ 系统语音: 已就绪" else "🎙️ 系统语音: 缺少离线中文包",
+                                    text = if (voiceEngineType == 0) "🤖 纯端侧 Sherpa-ONNX 引擎" else "📱 系统原生语音引擎",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -302,12 +304,44 @@ fun MainSettingsScreen(
                                     Text("重新检测", fontSize = 12.sp)
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Engine selector chips
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                EngineChip(
+                                    title = "🤖 Sherpa-ONNX 离线",
+                                    subtitle = "纯端侧 · 全机型通用",
+                                    isSelected = voiceEngineType == 0,
+                                    onClick = { onSwitchVoiceEngine(0) }
+                                )
+                                EngineChip(
+                                    title = "📱 系统原生服务",
+                                    subtitle = "依赖手机厂商 ROM",
+                                    isSelected = voiceEngineType == 1,
+                                    onClick = { onSwitchVoiceEngine(1) }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             Text(
-                                text = if (isVoiceAvailable)
-                                    "系统语音支持正常，悬浮速记窗将显示独立录音按钮。"
-                                else
-                                    "检测到系统缺少中文离线语音包（如 Google SODA 仅预装英文），悬浮速记窗已自动隐藏录音按钮，建议直接在键盘上点击麦克风说话输入。",
+                                text = if (voiceEngineType == 0) {
+                                    if (isVoiceAvailable)
+                                        "✅ 端侧离线模型就绪 (Zipformer Int8 16kHz)，100% 运行在手机端，无需联网，全机型统一极致体验。"
+                                    else
+                                        "⚠️ 端侧模型加载异常，建议点击右上角重新检测或回退至系统引擎。"
+                                } else {
+                                    if (isVoiceAvailable)
+                                        "✅ 系统原生语音服务正常可用。"
+                                    else
+                                        "⚠️ 当前系统缺少中文离线语音包，悬浮速记窗将自动隐藏独立录音按钮，建议在键盘上点击麦克风输入。"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -528,6 +562,38 @@ private fun PresetChip(
                         .clickable { onDelete() }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun EngineChip(
+    title: String,
+    subtitle: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                ),
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

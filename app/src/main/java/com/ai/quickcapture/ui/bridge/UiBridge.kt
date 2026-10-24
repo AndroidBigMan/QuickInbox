@@ -35,6 +35,7 @@ object UiBridge {
         fun onOpenAssistSettings()
         fun onAddTargetPreset(preset: String)
         fun onDeleteTargetPreset(preset: String)
+        fun onSwitchVoiceEngine(engineType: Int)
     }
 
     @JvmStatic
@@ -77,6 +78,7 @@ object UiBridge {
         autoSaveVoice: Boolean,
         lockscreenCapture: Boolean,
         targetPresets: List<String>,
+        voiceEngineType: Int,
         isVoiceAvailable: Boolean,
         lastTestResult: String?,
         listener: MainActionListener
@@ -94,6 +96,7 @@ object UiBridge {
                         autoSaveVoice = autoSaveVoice,
                         lockscreenCapture = lockscreenCapture,
                         targetPresets = targetPresets,
+                        voiceEngineType = voiceEngineType,
                         isVoiceAvailable = isVoiceAvailable,
                         lastTestResult = lastTestResult,
                         onPickFolder = { listener.onPickFolder() },
@@ -105,7 +108,8 @@ object UiBridge {
                         onRecheckVoiceSupport = { listener.onRecheckVoiceSupport() },
                         onOpenAssistSettings = { listener.onOpenAssistSettings() },
                         onAddTargetPreset = { listener.onAddTargetPreset(it) },
-                        onDeleteTargetPreset = { listener.onDeleteTargetPreset(it) }
+                        onDeleteTargetPreset = { listener.onDeleteTargetPreset(it) },
+                        onSwitchVoiceEngine = { listener.onSwitchVoiceEngine(it) }
                     )
                 }
             }

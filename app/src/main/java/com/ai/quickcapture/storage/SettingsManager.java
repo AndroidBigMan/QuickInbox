@@ -148,6 +148,18 @@ public class SettingsManager {
     public static final int VOICE_STATUS_SUPPORTED = 1;
     public static final int VOICE_STATUS_UNSUPPORTED = 2;
 
+    public static final String KEY_VOICE_ENGINE_TYPE = "voice_engine_type";
+    public static final int ENGINE_SHERPA_ONNX = 0;
+    public static final int ENGINE_SYSTEM = 1;
+
+    public int getVoiceEngineType() {
+        return prefs.getInt(KEY_VOICE_ENGINE_TYPE, ENGINE_SHERPA_ONNX);
+    }
+
+    public void setVoiceEngineType(int engineType) {
+        prefs.edit().putInt(KEY_VOICE_ENGINE_TYPE, engineType).apply();
+    }
+
     public int getVoiceSupportStatus() {
         return prefs.getInt(KEY_VOICE_SUPPORT_STATUS, VOICE_STATUS_UNKNOWN);
     }

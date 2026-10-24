@@ -80,6 +80,7 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
                 settingsManager.isAutoSaveVoice(),
                 settingsManager.isLockscreenCaptureEnabled(),
                 settingsManager.getTargetPresets(),
+                settingsManager.getVoiceEngineType(),
                 settingsManager.isVoiceAvailable(),
                 lastTestResult,
                 this
@@ -138,6 +139,21 @@ public class MainActivity extends ComponentActivity implements UiBridge.MainActi
         settingsManager.removeTargetPreset(preset);
         lastTestResult = "🗑️ 已移除目标预设: " + preset;
         renderUi();
+    }
+
+    @Override
+    public void onSwitchVoiceEngine(int engineType) {
+        settingsManager.setVoiceEngineType(engineType);
+        settingsManager.resetVoiceSupportStatus();
+        lastTestResult = "正在切换语音引擎并检测模型...";
+        renderUi();
+
+        speechManager.checkChineseSupportAsync((supported, reason) -> {
+            runOnUiThread(() -> {
+                lastTestResult = (supported ? "✅ " : "⚠️ ") + "引擎就绪状态: " + reason;
+                renderUi();
+            });
+        });
     }
 
     @Override
